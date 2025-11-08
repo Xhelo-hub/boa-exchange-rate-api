@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from .client import QuickBooksClient
 from ..boa_scraper.models import DailyExchangeRates, ExchangeRate
-from ..config.settings import settings
+from config.settings import settings
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -94,57 +94,45 @@ class QuickBooksSync:
             logger.error(f"Error during sync process: {str(e)}")
             return False
     
-    def _sync_single_rate(self, rate: ExchangeRate) -> bool:
+    def _sync_single_rate(self, rate: ExchangeRate, home_currency: str = 'ALL') -> bool:
         """
-        Sync a single exchange rate
+        Sync a single exchange rate to QuickBooks
+        
+        Per QB multicurrency docs:
+        - Exchange rates are stored as: rate = units of home currency per 1 foreign currency unit
+        - For BoA rates: if rate.rate = 100 (100 ALL per 1 USD), that's the format QB expects
         
         Args:
             rate: Exchange rate to sync
+            home_currency: Home currency code (default 'ALL' for Albanian Lek)
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Check if rate already exists for this date and currency
-            existing_rates = self.client.get_existing_exchange_rates(rate.date)
+            # Ensure the currency is in the active currency list first
+            # This is important - currencies must be active before posting rates
+            self.client.add_currency(rate.currency_code)
             
-            existing_rate = None
-            for existing in existing_rates:
-                if (existing.get('SourceCurrencyCode') == rate.currency_code and
-                    existing.get('TargetCurrencyCode') == 'ALL'):  # Albanian Lek
-                    existing_rate = existing
-                    break
+            # Post the exchange rate
+            # The rate from BoA is already in the correct format:
+            # units of ALL (home) per 1 unit of foreign currency
+            success = self.client.create_or_update_exchange_rate(
+                source_currency=rate.currency_code,
+                target_currency=home_currency,
+                rate=rate.rate,
+                as_of_date=rate.date
+            )
             
-            if existing_rate:
-                # Update existing rate
-                rate_id = existing_rate.get('Id')
-                success = self.client.update_exchange_rate(
-                    rate_id=rate_id,
-                    rate=rate.rate,
-                    as_of_date=rate.date
+            if success:
+                logger.debug(
+                    f"Synced rate for {rate.currency_code}/{home_currency} = {rate.rate} "
+                    f"on {rate.date}"
                 )
-                
-                if success:
-                    logger.debug(f"Updated existing rate for {rate.currency_code}")
-                else:
-                    logger.error(f"Failed to update rate for {rate.currency_code}")
-                
-                return success
             else:
-                # Create new rate
-                rate_id = self.client.create_exchange_rate(
-                    source_currency=rate.currency_code,
-                    target_currency='ALL',  # Albanian Lek
-                    rate=rate.rate,
-                    as_of_date=rate.date
-                )
-                
-                if rate_id:
-                    logger.debug(f"Created new rate for {rate.currency_code}")
-                    return True
-                else:
-                    logger.error(f"Failed to create rate for {rate.currency_code}")
-                    return False
+                logger.error(f"Failed to sync rate for {rate.currency_code}")
+            
+            return success
                     
         except Exception as e:
             logger.error(f"Error syncing rate for {rate.currency_code}: {str(e)}")

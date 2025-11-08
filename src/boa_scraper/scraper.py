@@ -18,6 +18,17 @@ logger = get_logger(__name__)
 class BoAScraper:
     """Bank of Albania exchange rate scraper"""
     
+    # Priority currencies - most needed for QuickBooks sync
+    PRIORITY_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF']
+    
+    # Albanian to English currency name mapping
+    CURRENCY_NAME_MAPPING = {
+        'Dollar Amerikan': 'USD',
+        'Euro': 'EUR',
+        'Poundi Britanik': 'GBP',
+        'Franga Zvicerane': 'CHF',
+    }
+    
     def __init__(self, base_url: str = "https://www.bankofalbania.org"):
         self.base_url = base_url
         self.session = requests.Session()
@@ -110,18 +121,52 @@ class BoAScraper:
                 for row in rows:
                     cols = row.find_all(['td', 'th'])
                     
-                    if len(cols) >= 3:  # Assuming: Currency, Name, Rate
+                    if len(cols) >= 2:  # At minimum: Currency name and Rate
                         try:
-                            currency_code = cols[0].get_text(strip=True)
-                            currency_name = cols[1].get_text(strip=True)
-                            rate_text = cols[2].get_text(strip=True)
+                            # Try to extract currency info from different column layouts
+                            # Layout 1: Name | Code | Rate
+                            # Layout 2: Name | Rate
+                            # Layout 3: Code | Rate
+                            
+                            col0_text = cols[0].get_text(strip=True)
+                            col1_text = cols[1].get_text(strip=True) if len(cols) > 1 else ""
+                            col2_text = cols[2].get_text(strip=True) if len(cols) > 2 else ""
+                            
+                            # Determine which column has the rate (look for numbers)
+                            rate_text = None
+                            currency_name_raw = None
+                            currency_code = None
+                            
+                            if re.search(r'\d+[.,]\d+', col2_text):
+                                # Layout 1: Name | Code | Rate
+                                currency_name_raw = col0_text
+                                currency_code = col1_text
+                                rate_text = col2_text
+                            elif re.search(r'\d+[.,]\d+', col1_text):
+                                # Layout 2 or 3: Name/Code | Rate
+                                currency_name_raw = col0_text
+                                rate_text = col1_text
+                            
+                            if not rate_text:
+                                continue
                             
                             # Clean and parse the rate
                             rate_text = re.sub(r'[^\d.,]', '', rate_text)
                             rate_text = rate_text.replace(',', '.')
                             
-                            if rate_text and currency_code:
+                            if not rate_text:
+                                continue
+                            
+                            # Normalize currency code from Albanian name
+                            if not currency_code or len(currency_code) != 3:
+                                currency_code = self._normalize_currency_name(currency_name_raw)
+                            
+                            # If we have a valid code and rate, create the exchange rate
+                            if currency_code and rate_text:
                                 rate = Decimal(rate_text)
+                                
+                                # Use the full name mapping
+                                currency_name = self._get_currency_name(currency_code)
                                 
                                 exchange_rate = ExchangeRate(
                                     currency_code=currency_code,
@@ -131,8 +176,9 @@ class BoAScraper:
                                 )
                                 
                                 rates.append(exchange_rate)
+                                logger.debug(f"Parsed rate: {currency_code} = {rate}")
                                 
-                        except (ValueError, IndexError) as e:
+                        except (ValueError, IndexError, Exception) as e:
                             logger.warning(f"Error parsing rate row: {str(e)}")
                             continue
             
@@ -194,6 +240,32 @@ class BoAScraper:
         
         return rates
     
+    def _normalize_currency_name(self, raw_name: str) -> str:
+        """
+        Convert Albanian currency name to ISO code
+        
+        Args:
+            raw_name: Currency name from BoA website (e.g., 'Dollar Amerikan')
+            
+        Returns:
+            ISO 4217 currency code (e.g., 'USD')
+        """
+        # Try exact match first
+        if raw_name in self.CURRENCY_NAME_MAPPING:
+            return self.CURRENCY_NAME_MAPPING[raw_name]
+        
+        # Try case-insensitive partial match
+        raw_lower = raw_name.lower().strip()
+        for alb_name, code in self.CURRENCY_NAME_MAPPING.items():
+            if alb_name.lower() in raw_lower or raw_lower in alb_name.lower():
+                return code
+        
+        # If already a code (USD, EUR, etc.), return as-is
+        if len(raw_name) == 3 and raw_name.isupper():
+            return raw_name
+        
+        return raw_name
+    
     def _get_currency_name(self, currency_code: str) -> str:
         """
         Get full currency name from currency code
@@ -205,10 +277,10 @@ class BoAScraper:
             Full currency name
         """
         currency_names = {
-            'USD': 'US Dollar',
+            'USD': 'Dollar Amerikan (US Dollar)',
             'EUR': 'Euro',
-            'GBP': 'British Pound',
-            'CHF': 'Swiss Franc',
+            'GBP': 'Poundi Britanik (British Pound)',
+            'CHF': 'Franga Zvicerane (Swiss Franc)',
             'CAD': 'Canadian Dollar',
             'JPY': 'Japanese Yen',
             'AUD': 'Australian Dollar',
@@ -218,3 +290,31 @@ class BoAScraper:
         }
         
         return currency_names.get(currency_code, currency_code)
+    
+    def get_priority_rates(self) -> Optional[DailyExchangeRates]:
+        """
+        Get only the priority exchange rates (USD, EUR, GBP, CHF)
+        
+        Returns:
+            DailyExchangeRates with only priority currencies
+        """
+        all_rates = self.get_current_rates()
+        
+        if not all_rates:
+            return None
+        
+        # Filter to only priority currencies
+        priority_rates = [
+            rate for rate in all_rates.rates 
+            if rate.currency_code in self.PRIORITY_CURRENCIES
+        ]
+        
+        if not priority_rates:
+            logger.warning("No priority currencies found in scraped rates")
+            return None
+        
+        return DailyExchangeRates(
+            date=all_rates.date,
+            rates=priority_rates,
+            source=all_rates.source
+        )

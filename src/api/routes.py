@@ -36,11 +36,20 @@ async def health_check():
 
 
 @router.get("/rates", response_model=DailyRatesResponse)
-async def get_current_rates():
-    """Get current exchange rates from Bank of Albania"""
+async def get_current_rates(priority_only: bool = False):
+    """
+    Get current exchange rates from Bank of Albania
+    
+    Args:
+        priority_only: If True, return only priority currencies (USD, EUR, GBP, CHF)
+    """
     try:
         scraper = BoAScraper()
-        daily_rates = scraper.get_current_rates()
+        
+        if priority_only:
+            daily_rates = scraper.get_priority_rates()
+        else:
+            daily_rates = scraper.get_current_rates()
         
         if not daily_rates:
             raise HTTPException(

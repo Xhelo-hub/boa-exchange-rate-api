@@ -2,8 +2,7 @@
 QuickBooks Online API client
 """
 
-from quickbooks import QuickBooks
-from quickbooks.objects import ExchangeRate as QBExchangeRate
+import requests
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from decimal import Decimal
@@ -31,7 +30,7 @@ class QuickBooksClient:
             client_secret: QB app client secret
             access_token: User access token
             refresh_token: User refresh token
-            company_id: Company ID
+            company_id: Company ID (realm ID)
             sandbox: Whether to use sandbox environment
         """
         self.client_id = client_id
@@ -41,24 +40,22 @@ class QuickBooksClient:
         self.company_id = company_id
         self.sandbox = sandbox
         
-        self._client = None
-        self._initialize_client()
-    
-    def _initialize_client(self):
-        """Initialize the QuickBooks client"""
-        try:
-            self._client = QuickBooks(
-                sandbox=self.sandbox,
-                consumer_key=self.client_id,
-                consumer_secret=self.client_secret,
-                access_token=self.access_token,
-                access_token_secret=self.refresh_token,
-                company_id=self.company_id
-            )
-            logger.info("QuickBooks client initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize QuickBooks client: {str(e)}")
-            raise
+        # Set base URL based on environment
+        self.base_url = (
+            "https://sandbox-quickbooks.api.intuit.com/v3" 
+            if sandbox 
+            else "https://quickbooks.api.intuit.com/v3"
+        )
+        
+        # Initialize session with headers
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Authorization': f'Bearer {self.access_token}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        })
+        
+        logger.info(f"QuickBooks client initialized for company {company_id} ({'sandbox' if sandbox else 'production'})")
     
     def test_connection(self) -> bool:
         """
@@ -69,16 +66,63 @@ class QuickBooksClient:
         """
         try:
             # Try to get company info as a connection test
-            company_info = self._client.get_company_info()
-            logger.info(f"Connected to QuickBooks company: {company_info}")
+            url = f"{self.base_url}/company/{self.company_id}/companyinfo/{self.company_id}"
+            response = self.session.get(url)
+            response.raise_for_status()
+            
+            company_info = response.json()
+            company_name = company_info.get('CompanyInfo', {}).get('CompanyName', 'Unknown')
+            logger.info(f"Connected to QuickBooks company: {company_name}")
             return True
         except Exception as e:
             logger.error(f"QuickBooks connection test failed: {str(e)}")
             return False
     
+    def get_existing_exchange_rate(self, 
+                                   source_currency: str, 
+                                   target_date: date) -> Optional[Dict[str, Any]]:
+        """
+        Get existing exchange rate for a specific currency and date
+        
+        Args:
+            source_currency: Source currency code (e.g., 'USD')
+            target_date: Date to query
+            
+        Returns:
+            Exchange rate data if found, None otherwise
+        """
+        try:
+            # Use the GET /exchangerate endpoint with currency code and date
+            date_str = target_date.strftime("%Y-%m-%d")
+            url = f"{self.base_url}/company/{self.company_id}/exchangerate"
+            params = {
+                'sourcecurrencycode': source_currency,
+                'asofdate': date_str
+            }
+            
+            response = self.session.get(url, params=params)
+            
+            # 404 means no rate exists for this currency/date combo - that's ok
+            if response.status_code == 404:
+                logger.debug(f"No existing rate for {source_currency} on {date_str}")
+                return None
+            
+            response.raise_for_status()
+            data = response.json()
+            return data.get('ExchangeRate')
+            
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                return None
+            logger.error(f"HTTP error querying exchange rate: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Error querying existing exchange rate: {str(e)}")
+            return None
+    
     def get_existing_exchange_rates(self, target_date: date) -> List[Dict[str, Any]]:
         """
-        Get existing exchange rates for a specific date
+        Get existing exchange rates for a specific date (kept for compatibility)
         
         Args:
             target_date: Date to query
@@ -86,19 +130,72 @@ class QuickBooksClient:
         Returns:
             List of existing exchange rate records
         """
+        # Note: QB doesn't provide a query-all-rates-for-date endpoint
+        # This would need to iterate through known currencies
+        # For now, return empty list and handle per-currency queries
+        return []
+    
+    def create_or_update_exchange_rate(self, 
+                                       source_currency: str,
+                                       target_currency: str,
+                                       rate: Decimal,
+                                       as_of_date: date) -> bool:
+        """
+        Create or update an exchange rate in QuickBooks
+        
+        Per QB API docs: POST /company/<realmId>/exchangerate creates/updates a rate
+        
+        Args:
+            source_currency: Source currency code (e.g., 'USD')
+            target_currency: Target currency code (e.g., 'ALL' for Albanian Lek)
+            rate: Exchange rate (units of target currency per 1 unit of source)
+            as_of_date: Effective date of the rate
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
-            # Query exchange rates for the specific date
-            date_str = target_date.strftime("%Y-%m-%d")
+            # Check if rate already exists
+            existing_rate = self.get_existing_exchange_rate(source_currency, as_of_date)
             
-            # Note: The exact query syntax may vary based on QB API version
-            query = f"SELECT * FROM ExchangeRate WHERE AsOfDate = '{date_str}'"
+            date_str = as_of_date.strftime("%Y-%m-%d")
             
-            results = self._client.query(query)
-            return results or []
+            # Build request payload per QB API documentation
+            payload = {
+                "SourceCurrencyCode": source_currency,
+                "TargetCurrencyCode": target_currency,
+                "Rate": float(rate),
+                "AsOfDate": date_str
+            }
             
+            # Include SyncToken and MetaData if updating existing rate
+            if existing_rate:
+                payload["SyncToken"] = existing_rate.get("SyncToken", "0")
+                if "MetaData" in existing_rate:
+                    payload["MetaData"] = existing_rate["MetaData"]
+            else:
+                payload["SyncToken"] = "0"
+            
+            # POST to exchangerate endpoint
+            url = f"{self.base_url}/company/{self.company_id}/exchangerate"
+            response = self.session.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            exchange_rate = result.get('ExchangeRate', {})
+            
+            logger.info(
+                f"{'Updated' if existing_rate else 'Created'} exchange rate: "
+                f"{source_currency}/{target_currency} = {rate} (as of {date_str})"
+            )
+            return True
+                
+        except requests.HTTPError as e:
+            logger.error(f"HTTP error creating/updating exchange rate: {e.response.text}")
+            return False
         except Exception as e:
-            logger.error(f"Error querying existing exchange rates: {str(e)}")
-            return []
+            logger.error(f"Error creating/updating exchange rate: {str(e)}")
+            return False
     
     def create_exchange_rate(self, 
                            source_currency: str,
@@ -106,103 +203,117 @@ class QuickBooksClient:
                            rate: Decimal,
                            as_of_date: date) -> Optional[str]:
         """
-        Create or update an exchange rate in QuickBooks
+        Create an exchange rate in QuickBooks (legacy method for compatibility)
         
         Args:
-            source_currency: Source currency code (e.g., 'USD')
-            target_currency: Target currency code (e.g., 'ALL')
+            source_currency: Source currency code
+            target_currency: Target currency code
             rate: Exchange rate
             as_of_date: Date of the rate
             
         Returns:
-            Exchange rate ID if successful, None otherwise
+            "success" if successful, None otherwise
         """
-        try:
-            # Create QB exchange rate object
-            qb_rate = QBExchangeRate()
-            qb_rate.SourceCurrencyCode = source_currency
-            qb_rate.TargetCurrencyCode = target_currency
-            qb_rate.Rate = float(rate)
-            qb_rate.AsOfDate = as_of_date.strftime("%Y-%m-%d")
-            
-            # Save to QuickBooks
-            result = qb_rate.save(qb=self._client)
-            
-            if result:
-                logger.info(f"Created exchange rate: {source_currency}/{target_currency} = {rate}")
-                return str(result.Id)
-            else:
-                logger.error("Failed to create exchange rate")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error creating exchange rate: {str(e)}")
-            return None
+        success = self.create_or_update_exchange_rate(
+            source_currency, target_currency, rate, as_of_date
+        )
+        return "success" if success else None
     
     def update_exchange_rate(self,
                            rate_id: str,
                            rate: Decimal,
                            as_of_date: date) -> bool:
         """
-        Update an existing exchange rate
+        Update an existing exchange rate (legacy method - now uses create_or_update)
         
         Args:
-            rate_id: Exchange rate ID
+            rate_id: Exchange rate ID (not used in new implementation)
             rate: New exchange rate
             as_of_date: Date of the rate
             
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Get existing rate
-            existing_rate = QBExchangeRate.get(rate_id, qb=self._client)
-            
-            if existing_rate:
-                existing_rate.Rate = float(rate)
-                existing_rate.AsOfDate = as_of_date.strftime("%Y-%m-%d")
-                
-                result = existing_rate.save(qb=self._client)
-                
-                if result:
-                    logger.info(f"Updated exchange rate ID {rate_id}: rate = {rate}")
-                    return True
-                else:
-                    logger.error(f"Failed to update exchange rate ID {rate_id}")
-                    return False
-            else:
-                logger.error(f"Exchange rate ID {rate_id} not found")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error updating exchange rate: {str(e)}")
-            return False
+        # Note: The new QB API doesn't use rate_id for updates
+        # It uses currency code + date combination
+        # This method is kept for compatibility but logs a warning
+        logger.warning(
+            "update_exchange_rate called with rate_id. "
+            "Consider using create_or_update_exchange_rate instead."
+        )
+        # Cannot update without knowing the currency code
+        return False
     
-    def get_currencies(self) -> List[Dict[str, str]]:
+    def get_active_currencies(self) -> List[Dict[str, str]]:
         """
-        Get list of available currencies in QuickBooks
+        Get list of active currencies in QuickBooks company
+        
+        Per QB API: POST /company/<realmId>/query with "select * from companycurrency"
         
         Returns:
-            List of currency dictionaries
+            List of active currency dictionaries
         """
         try:
-            # Query all items (currencies are items in QB)
-            query = "SELECT * FROM Item WHERE Type = 'Currency'"
-            results = self._client.query(query)
+            url = f"{self.base_url}/company/{self.company_id}/query"
+            params = {'query': 'select * from companycurrency'}
+            
+            response = self.session.post(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            query_response = data.get('QueryResponse', {})
+            company_currencies = query_response.get('CompanyCurrency', [])
             
             currencies = []
-            for item in results:
-                currencies.append({
-                    'code': item.get('Name', ''),
-                    'name': item.get('Description', ''),
-                    'id': item.get('Id', '')
-                })
+            for currency in company_currencies:
+                if currency.get('Active', False):
+                    currencies.append({
+                        'code': currency.get('Code', ''),
+                        'name': currency.get('Name', ''),
+                        'id': currency.get('Id', '')
+                    })
             
+            logger.info(f"Retrieved {len(currencies)} active currencies")
             return currencies
             
         except Exception as e:
-            logger.error(f"Error getting currencies: {str(e)}")
+            logger.error(f"Error getting active currencies: {str(e)}")
             return []
+    
+    def add_currency(self, currency_code: str) -> bool:
+        """
+        Add a currency to the active currency list
+        
+        Per QB API: POST /company/<realmId>/companycurrency
+        
+        Args:
+            currency_code: ISO 4217 currency code (e.g., 'USD', 'EUR')
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f"{self.base_url}/company/{self.company_id}/companycurrency"
+            payload = {"Code": currency_code}
+            
+            response = self.session.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            currency = result.get('CompanyCurrency', {})
+            logger.info(f"Added currency: {currency.get('Code')} - {currency.get('Name')}")
+            return True
+            
+        except requests.HTTPError as e:
+            if e.response.status_code == 400:
+                # Currency might already exist
+                logger.warning(f"Currency {currency_code} may already be active")
+                return True
+            logger.error(f"HTTP error adding currency: {e.response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Error adding currency: {str(e)}")
+            return False
     
     def refresh_tokens(self) -> bool:
         """

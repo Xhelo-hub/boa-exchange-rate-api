@@ -5,11 +5,13 @@ A Python API that scrapes exchange rates from the Bank of Albania website and sy
 ## Features
 
 - **Exchange Rate Scraping**: Automatically retrieves daily exchange rates from Bank of Albania
-- **QuickBooks Online Integration**: Posts exchange rates to QuickBooks Online
+- **QuickBooks Online Multicurrency Integration**: Posts exchange rates to QuickBooks Online using the official Exchange Rate API
+- **Currency Management**: Automatically adds currencies to QuickBooks active currency list
 - **Date-based Synchronization**: Updates rates based on transaction dates
 - **REST API**: FastAPI-based web service for easy integration
 - **Scheduled Updates**: Automatic daily rate updates
 - **Error Handling**: Comprehensive error handling and logging
+- **Docker Support**: Easy deployment with Docker and docker-compose
 
 ## Project Structure
 
@@ -217,12 +219,44 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For support, please open an issue on GitHub or contact the development team.
 
+## QuickBooks Multicurrency Integration
+
+This API now supports full QuickBooks Online multicurrency integration. See [QB_MULTICURRENCY_INTEGRATION.md](QB_MULTICURRENCY_INTEGRATION.md) for detailed documentation including:
+
+- How exchange rates are posted to QuickBooks
+- Currency management and activation
+- API endpoint reference
+- Testing and troubleshooting guide
+- Code structure and examples
+
+### Quick Test
+
+Run the integration test script:
+
+```bash
+python test_qb_integration.py
+```
+
+This will test:
+1. BoA scraper functionality
+2. QuickBooks connection
+3. Currency management
+4. Exchange rate posting
+5. Full synchronization
+
 ## Changelog
+
+### v0.2.0
+- **QuickBooks Multicurrency Support**: Full integration with QB Exchange Rate API
+- **Direct REST API**: Replaced QB library with direct API calls for better control
+- **Currency Management**: Auto-adds currencies to QB active list before posting rates
+- **Enhanced Error Handling**: Improved logging and error messages
+- **Test Script**: Added comprehensive integration test script
 
 ### v0.1.0
 - Initial project setup
 - Bank of Albania scraper implementation
-- QuickBooks Online integration
+- QuickBooks Online basic integration
 - FastAPI REST API
 - Automated scheduling
 - Basic test suite
