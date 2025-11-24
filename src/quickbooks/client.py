@@ -84,12 +84,31 @@ class QuickBooksClient:
         """
         Get existing exchange rate for a specific currency and date
         
+        Uses GET /company/<realmId>/exchangerate endpoint with query parameters.
+        Per QB API docs: -currencycode is the desired currency code (required)
+                        -yyyy-mm-dd is the desired effective date (if not specified, today's date is used)
+        
         Args:
             source_currency: Source currency code (e.g., 'USD')
             target_date: Date to query
             
         Returns:
-            Exchange rate data if found, None otherwise
+            Exchange rate data including SyncToken if found, None otherwise
+            
+        Example response:
+        {
+            "ExchangeRate": {
+                "SyncToken": "0",
+                "SourceCurrencyCode": "USD",
+                "TargetCurrencyCode": "ALL",
+                "Rate": 95.50,
+                "AsOfDate": "2025-11-23",
+                "MetaData": {
+                    "CreateTime": "2025-11-23T10:00:00-08:00",
+                    "LastUpdatedTime": "2025-11-23T10:00:00-08:00"
+                }
+            }
+        }
         """
         try:
             # Use the GET /exchangerate endpoint with currency code and date
@@ -109,7 +128,15 @@ class QuickBooksClient:
             
             response.raise_for_status()
             data = response.json()
-            return data.get('ExchangeRate')
+            exchange_rate = data.get('ExchangeRate')
+            
+            if exchange_rate:
+                logger.debug(
+                    f"Found existing rate for {source_currency} on {date_str}: "
+                    f"Rate={exchange_rate.get('Rate')}, SyncToken={exchange_rate.get('SyncToken')}"
+                )
+            
+            return exchange_rate
             
         except requests.HTTPError as e:
             if e.response.status_code == 404:
@@ -145,9 +172,22 @@ class QuickBooksClient:
         
         Per QB API docs: POST /company/<realmId>/exchangerate creates/updates a rate
         
+        QuickBooks Exchange Rate Object Requirements:
+        - SourceCurrencyCode: Required (3 chars) - e.g., 'USD', 'EUR'
+        - TargetCurrencyCode: Optional (3 chars) - defaults to Home Currency if not supplied
+        - Rate: Required (Decimal) - exchange rate value
+        - AsOfDate: Required (Date) - effective date in YYYY-MM-DD format
+        - SyncToken: Required for update - version number for optimistic locking
+        
+        Important notes:
+        - Setting exchange rate != 1 when SourceCurrencyCode=TargetCurrencyCode results in rate=1
+        - Setting rate where SourceCurrencyCode = home currency results in validation error
+        - Only the latest version of the object is maintained by QuickBooks Online
+        
         Args:
             source_currency: Source currency code (e.g., 'USD')
             target_currency: Target currency code (e.g., 'ALL' for Albanian Lek)
+                           Defaults to home currency if not supplied
             rate: Exchange rate (units of target currency per 1 unit of source)
             as_of_date: Effective date of the rate
             
@@ -155,43 +195,62 @@ class QuickBooksClient:
             True if successful, False otherwise
         """
         try:
-            # Check if rate already exists
+            # Check if rate already exists to get SyncToken
             existing_rate = self.get_existing_exchange_rate(source_currency, as_of_date)
             
             date_str = as_of_date.strftime("%Y-%m-%d")
             
             # Build request payload per QB API documentation
+            # Mandatory fields: SourceCurrencyCode, Rate, AsOfDate
             payload = {
                 "SourceCurrencyCode": source_currency,
-                "TargetCurrencyCode": target_currency,
                 "Rate": float(rate),
                 "AsOfDate": date_str
             }
             
-            # Include SyncToken and MetaData if updating existing rate
+            # TargetCurrencyCode is optional - defaults to home currency
+            # Include it if provided and different from source
+            if target_currency and target_currency != source_currency:
+                payload["TargetCurrencyCode"] = target_currency
+            
+            # SyncToken is required for updates
             if existing_rate:
+                # Updating existing rate - use existing SyncToken
                 payload["SyncToken"] = existing_rate.get("SyncToken", "0")
                 if "MetaData" in existing_rate:
                     payload["MetaData"] = existing_rate["MetaData"]
+                logger.debug(f"Updating existing rate with SyncToken: {payload['SyncToken']}")
             else:
+                # Creating new rate - SyncToken = "0"
                 payload["SyncToken"] = "0"
+                logger.debug("Creating new rate with SyncToken: 0")
             
-            # POST to exchangerate endpoint
+            # POST to exchangerate endpoint (creates or updates based on SyncToken)
             url = f"{self.base_url}/company/{self.company_id}/exchangerate"
             response = self.session.post(url, json=payload)
             response.raise_for_status()
             
             result = response.json()
             exchange_rate = result.get('ExchangeRate', {})
+            new_sync_token = exchange_rate.get('SyncToken', 'unknown')
             
             logger.info(
                 f"{'Updated' if existing_rate else 'Created'} exchange rate: "
-                f"{source_currency}/{target_currency} = {rate} (as of {date_str})"
+                f"{source_currency}/{target_currency} = {rate} (as of {date_str}, SyncToken: {new_sync_token})"
             )
             return True
                 
         except requests.HTTPError as e:
-            logger.error(f"HTTP error creating/updating exchange rate: {e.response.text}")
+            error_detail = e.response.text
+            logger.error(f"HTTP error creating/updating exchange rate: {error_detail}")
+            
+            # Log specific validation errors
+            if "validation" in error_detail.lower():
+                logger.error(
+                    f"Validation error - check that {source_currency} is not the home currency "
+                    f"and is in the active currency list"
+                )
+            
             return False
         except Exception as e:
             logger.error(f"Error creating/updating exchange rate: {str(e)}")

@@ -1,11 +1,29 @@
 """
 Bank of Albania exchange rate scraper
+
+Implementation follows BoA Regulation No. 1, dated June 2, 2021
+"On the method of calculating the official exchange rate fixing (fiksi)"
+
+The official fixing methodology:
+- Calculated daily 11:30-12:00 by Bank of Albania
+- Based on quotes from 10 participating banks
+- Excludes 2 highest and 2 lowest quotes
+- Average of remaining quotes = official fixing
+- USD is the reference currency
+- Other currencies calculated via cross-rates against USD
+
+Data available from BoA website:
+- Main rate (fiksi) for 22+ currencies
+- Buy/sell rates for USD and EUR
+- Daily changes
+- Last update timestamp
+- Unit multipliers (JPY, HUF, RUB per 100 units)
 """
 
 import requests
 from bs4 import BeautifulSoup
 from datetime import date, datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from decimal import Decimal
 import re
 
@@ -16,17 +34,72 @@ logger = get_logger(__name__)
 
 
 class BoAScraper:
-    """Bank of Albania exchange rate scraper"""
+    """
+    Bank of Albania exchange rate scraper
+    
+    Scrapes the official exchange rate fixing (fiksi) published by Bank of Albania
+    according to Regulation No. 1/2021.
+    
+    Daily currencies (calculated every business day):
+    - USD (Dollar Amerikan) - reference currency
+    - EUR (Euro)
+    - JPY (Jeni Japonez) - per 100 units
+    - GBP (Paundi Britanik)
+    - CHF (Franga Zvicerane)
+    - AUD (Dollari Australiane)
+    - CAD (Dollari Kanadez)
+    - SEK (Korona Suedeze)
+    - NOK (Korona Norvegjeze)
+    - DKK (Korona Daneze)
+    - TRY (Lira Turke)
+    - CNY (Juani Kinez - onshore)
+    - CNH (Juani Kinez - offshore)
+    - SDR (Të drejtat speciale të tërheqjes - IMF)
+    - XAU (Ari - per 1 onc)
+    - XAG (Argjendi - per 1 onc)
+    
+    Bi-monthly currencies (calculated 15th and last business day):
+    - BGN (Leva Bullgare)
+    - HUF (Forinta Hungareze) - per 100 units
+    - RUB (Rubla Ruse) - per 100 units
+    - HRK (Kuna Kroate) - obsolete
+    - CZK (Korona Çeke)
+    - MKD (Dinari Maqedonas)
+    """
     
     # Priority currencies - most needed for QuickBooks sync
     PRIORITY_CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF']
     
-    # Albanian to English currency name mapping
+    # Currencies quoted per 100 units (as per BoA regulation)
+    UNIT_100_CURRENCIES = ['JPY', 'HUF', 'RUB']
+    
+    # Albanian to English currency name mapping (complete as per regulation)
     CURRENCY_NAME_MAPPING = {
         'Dollar Amerikan': 'USD',
+        'Dollari Amerikan': 'USD',
         'Euro': 'EUR',
         'Poundi Britanik': 'GBP',
+        'Paundi Britanik': 'GBP',
         'Franga Zvicerane': 'CHF',
+        'Jeni Japonez': 'JPY',
+        'Dollari Australiane': 'AUD',
+        'Dollari Kanadez': 'CAD',
+        'Korona Suedeze': 'SEK',
+        'Korona Norvegjeze': 'NOK',
+        'Korona Daneze': 'DKK',
+        'Lira Turke': 'TRY',
+        'Juani Kinez': 'CNY',
+        'Leva Bullgare': 'BGN',
+        'Forinta Hungareze': 'HUF',
+        'Rubla Ruse': 'RUB',
+        'Kuna Kroate': 'HRK',
+        'Korona Çeke': 'CZK',
+        'Dinari Maqedonas': 'MKD',
+        'Ari': 'XAU',
+        'Argjendi': 'XAG',
+        'Argjend': 'XAG',
+        'SDR': 'SDR',
+        'Të drejtat speciale të tërheqjes': 'SDR',
     }
     
     def __init__(self, base_url: str = "https://www.bankofalbania.org"):
@@ -40,30 +113,42 @@ class BoAScraper:
         """
         Get current exchange rates from Bank of Albania
         
+        Scrapes from official BoA page: /Tregjet/Kursi_zyrtar_i_kembimit/
+        
         Returns:
             DailyExchangeRates object or None if scraping fails
         """
         try:
-            # The actual URL pattern for BoA exchange rates
-            # This is a placeholder - you'll need to inspect the actual BoA website
-            url = f"{self.base_url}/web/Kursi_i_kembimit_te_lekut_2024_4411_1.php"
+            # Official BoA exchange rate page
+            url = f"{self.base_url}/Tregjet/Kursi_zyrtar_i_kembimit/"
             
             logger.info(f"Scraping exchange rates from: {url}")
             
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
+            response.encoding = 'utf-8'  # Ensure proper Albanian character handling
             
             soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract metadata (last update timestamp)
+            boa_timestamp = self._extract_last_update_time(soup)
             
             # Parse the exchange rates table
             rates = self._parse_exchange_table(soup)
             
             if rates:
+                # Determine effective date from BoA timestamp or use today
+                effective_date = boa_timestamp.date() if boa_timestamp else date.today()
+                
                 daily_rates = DailyExchangeRates(
-                    date=date.today(),
+                    date=effective_date,
                     rates=rates
                 )
-                logger.info(f"Successfully scraped {len(rates)} exchange rates")
+                logger.info(f"Successfully scraped {len(rates)} exchange rates for {effective_date}")
+                
+                if boa_timestamp:
+                    logger.info(f"BoA last update: {boa_timestamp}")
+                
                 return daily_rates
             else:
                 logger.warning("No exchange rates found on the page")
@@ -73,7 +158,42 @@ class BoAScraper:
             logger.error(f"Request error while scraping BoA: {str(e)}")
             return None
         except Exception as e:
-            logger.error(f"Error scraping BoA exchange rates: {str(e)}")
+            logger.error(f"Error scraping BoA exchange rates: {str(e)}", exc_info=True)
+            return None
+    
+    def _extract_last_update_time(self, soup: BeautifulSoup) -> Optional[datetime]:
+        """
+        Extract "Përditesimi i fundit" (last update) timestamp from page
+        
+        Format: "21.11.2025 12:12:08" or similar
+        
+        Args:
+            soup: BeautifulSoup object
+            
+        Returns:
+            datetime object or None
+        """
+        try:
+            # Look for timestamp pattern in text
+            text = soup.get_text()
+            
+            # Pattern: DD.MM.YYYY HH:MM:SS
+            pattern = r'(\d{1,2}\.\d{1,2}\.\d{4})\s+(\d{1,2}:\d{2}:\d{2})'
+            match = re.search(pattern, text)
+            
+            if match:
+                date_str = match.group(1)
+                time_str = match.group(2)
+                
+                # Parse: 21.11.2025 12:12:08
+                dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M:%S")
+                logger.debug(f"Extracted BoA timestamp: {dt}")
+                return dt
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Could not extract last update timestamp: {e}")
             return None
     
     def get_rates_for_date(self, target_date: date) -> Optional[DailyExchangeRates]:

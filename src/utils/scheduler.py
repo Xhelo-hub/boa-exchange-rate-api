@@ -24,15 +24,24 @@ def daily_update_task():
         # Import here to avoid circular imports
         from ..boa_scraper.scraper import BoAScraper
         from ..quickbooks.sync import QuickBooksSync
+        from ..database.engine import get_db_manager
+        from ..database.repository import ExchangeRateRepository
         
         # Scrape current rates
         scraper = BoAScraper()
         rates = scraper.get_current_rates()
         
         if rates:
-            logger.info(f"Scraped {len(rates)} exchange rates")
+            logger.info(f"Scraped {len(rates.rates)} exchange rates")
             
-            # Sync with QuickBooks
+            # Save to database
+            db_manager = get_db_manager()
+            with db_manager.get_session() as session:
+                repo = ExchangeRateRepository(session)
+                stats = repo.save_rates(rates)
+                logger.info(f"Database: {stats['new']} new, {stats['updated']} updated, {stats['unchanged']} unchanged")
+            
+            # Sync with QuickBooks (only priority currencies)
             qb_sync = QuickBooksSync()
             result = qb_sync.sync_rates(rates)
             
