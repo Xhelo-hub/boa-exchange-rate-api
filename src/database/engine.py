@@ -181,3 +181,21 @@ def init_database(database_url: str = None):
     db_manager = get_db_manager(database_url)
     logger.info("Database initialized and ready")
     return db_manager
+
+
+def get_db():
+    """
+    FastAPI dependency for database sessions
+    
+    Usage in FastAPI:
+        @app.get("/endpoint")
+        def my_endpoint(db: Session = Depends(get_db)):
+            # Use db here
+            pass
+    """
+    db_manager = get_db_manager()
+    db = db_manager.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

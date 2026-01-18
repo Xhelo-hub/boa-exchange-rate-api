@@ -70,7 +70,7 @@ class QuickBooksSync:
             return False
         
         try:
-            logger.info(f"Syncing {len(daily_rates.rates)} exchange rates for {daily_rates.date}")
+            logger.info(f"Syncing {len(daily_rates.rates)} exchange rates for {daily_rates.rates_date}")
             
             success_count = 0
             error_count = 0
@@ -121,13 +121,13 @@ class QuickBooksSync:
                 source_currency=rate.currency_code,
                 target_currency=home_currency,
                 rate=rate.rate,
-                as_of_date=rate.date
+                as_of_date=rate.rate_date
             )
             
             if success:
                 logger.debug(
                     f"Synced rate for {rate.currency_code}/{home_currency} = {rate.rate} "
-                    f"on {rate.date}"
+                    f"on {rate.rate_date}"
                 )
             else:
                 logger.error(f"Failed to sync rate for {rate.currency_code}")

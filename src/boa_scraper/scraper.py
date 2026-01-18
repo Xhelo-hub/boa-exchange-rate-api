@@ -141,7 +141,7 @@ class BoAScraper:
                 effective_date = boa_timestamp.date() if boa_timestamp else date.today()
                 
                 daily_rates = DailyExchangeRates(
-                    date=effective_date,
+                    rates_date=effective_date,
                     rates=rates
                 )
                 logger.info(f"Successfully scraped {len(rates)} exchange rates for {effective_date}")
@@ -292,7 +292,7 @@ class BoAScraper:
                                     currency_code=currency_code,
                                     currency_name=currency_name,
                                     rate=rate,
-                                    date=date.today()
+                                    rate_date=date.today()
                                 )
                                 
                                 rates.append(exchange_rate)
@@ -350,7 +350,7 @@ class BoAScraper:
                         currency_code=currency_code,
                         currency_name=self._get_currency_name(currency_code),
                         rate=rate,
-                        date=date.today()
+                        rate_date=date.today()
                     )
                     
                     rates.append(exchange_rate)
@@ -434,7 +434,7 @@ class BoAScraper:
             return None
         
         return DailyExchangeRates(
-            date=all_rates.date,
+            rates_date=all_rates.rates_date,
             rates=priority_rates,
             source=all_rates.source
         )

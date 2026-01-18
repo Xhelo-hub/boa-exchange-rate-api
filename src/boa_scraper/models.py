@@ -14,7 +14,7 @@ class ExchangeRate(BaseModel):
     currency_code: str = Field(..., description="ISO 4217 currency code (e.g., 'USD', 'EUR')")
     currency_name: str = Field(..., description="Full currency name")
     rate: Decimal = Field(..., description="Exchange rate to Albanian Lek")
-    date: date = Field(..., description="Date of the exchange rate")
+    rate_date: date = Field(..., description="Date of the exchange rate")
     created_at: Optional[datetime] = Field(default_factory=datetime.now)
     
     class Config:
@@ -28,7 +28,7 @@ class ExchangeRate(BaseModel):
 class DailyExchangeRates(BaseModel):
     """Daily exchange rates collection"""
     
-    date: date = Field(..., description="Date of the rates")
+    rates_date: date = Field(..., description="Date of the rates")
     rates: List[ExchangeRate] = Field(..., description="List of exchange rates")
     source: str = Field(default="Bank of Albania", description="Source of the rates")
     scraped_at: datetime = Field(default_factory=datetime.now)

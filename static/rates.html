@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank of Albania Exchange Rates</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+
+        .search-section {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .search-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #33cc66;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #29a356;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(51, 204, 102, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .results-section {
+            padding: 30px;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .results-info {
+            font-size: 0.95rem;
+            color: #666;
+        }
+
+        .results-info strong {
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .rates-table-container {
+            overflow-x: auto;
+        }
+
+        .rates-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .rates-table thead {
+            background: #f8f9fa;
+        }
+
+        .rates-table th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .rates-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .rates-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .currency-code {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 1.1rem;
+        }
+
+        .currency-name {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .rate-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        .unit-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #ffc107;
+            color: #333;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .base-rate-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #28a745;
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .expand-btn {
+            background: #33cc66;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
+        }
+
+        .expand-btn:hover {
+            background: #29a356;
+        }
+
+        .expand-btn.expanded {
+            background: #6c757d;
+        }
+
+        .other-rates {
+            display: none;
+            margin-top: 10px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+
+        .other-rates.show {
+            display: block;
+        }
+
+        .other-rates-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .rate-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .rate-item-code {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .rate-item-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .base-rates-display {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .base-rate-item {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .base-rate-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .base-rate-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #dc3545;
+            margin: 20px 0;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .no-results svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+
+            .results-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .rates-table th,
+            .rates-table td {
+                padding: 10px;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-university"></i> Bank of Albania Exchange Rates</h1>
+            <p>Official exchange rates (fiksi) according to BoA Regulation No. 1/2021</p>
+        </div>
+
+        <div class="search-section">
+            <form class="search-form" id="searchForm">
+                <div class="form-group">
+                    <label for="dateFrom">Date From</label>
+                    <input type="date" id="dateFrom" name="dateFrom">
+                </div>
+
+                <div class="form-group">
+                    <label for="dateTo">Date To</label>
+                    <input type="date" id="dateTo" name="dateTo">
+                </div>
+
+                <div class="form-group">
+                    <label for="currency">Currency</label>
+                    <select id="currency" name="currency">
+                        <option value="">All Currencies</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="baseRatesOnly" name="baseRatesOnly">
+                        <label for="baseRatesOnly">Base Rates Only (EUR, USD, GBP, CHF)</label>
+                    </div>
+                </div>
+            </form>
+
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="searchRates()"><i class="fas fa-search"></i> Search Rates</button>
+                <button class="btn btn-secondary" onclick="resetSearch()"><i class="fas fa-redo"></i> Reset</button>
+                <button class="btn btn-secondary" onclick="loadCurrentRates()"><i class="fas fa-chart-line"></i> Current Rates</button>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div id="resultsContainer">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading exchange rates...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default dates
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('dateTo').value = today;
+            
+            // Load available currencies
+            loadCurrencies();
+            
+            // Load current rates by default
+            loadCurrentRates();
+        });
+
+        // Load available currencies for dropdown
+        async function loadCurrencies() {
+            try {
+                const response = await fetch('/api/v1/exchange-rates/currencies');
+                const currencies = await response.json();
+                
+                const select = document.getElementById('currency');
+                
+                currencies.forEach(currency => {
+                    const option = document.createElement('option');
+                    option.value = currency;
+                    option.textContent = currency;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading currencies:', error);
+            }
+        }
+
+        // Load current rates
+        async function loadCurrentRates() {
+            const baseRatesOnly = document.getElementById('baseRatesOnly').checked;
+            const currency = document.getElementById('currency').value;
+            
+            let url = `/api/v1/exchange-rates/current?base_rates_only=${baseRatesOnly}`;
+            if (currency) {
+                url += `&currency=${currency}`;
+            }
+            
+            showLoading();
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to fetch rates');
+                }
+                
+                displayRates(data);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Search rates
+        async function searchRates() {
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+            const currency = document.getElementById('currency').value;
+            const baseRatesOnly = document.getElementById('baseRatesOnly').checked;
+            
+            let url = `/api/v1/exchange-rates/search?base_rates_only=${baseRatesOnly}`;
+            
+            if (dateFrom) url += `&date_from=${dateFrom}`;
+            if (dateTo) url += `&date_to=${dateTo}`;
+            if (currency) url += `&currency=${currency}`;
+            
+            showLoading();
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to search rates');
+                }
+                
+                displayRates(data);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Display rates
+        function displayRates(data) {
+            const container = document.getElementById('resultsContainer');
+            
+            if (!data.rates || data.rates.length === 0) {
+                container.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-search" style="font-size: 64px; opacity: 0.5; margin-bottom: 15px;"></i>
+                        <h3>No exchange rates found</h3>
+                        <p>Try adjusting your search criteria</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const baseRateCodes = ['EUR', 'USD', 'GBP', 'CHF'];
+            
+            // Separate base rates from other rates
+            const baseRates = {};
+            const otherRates = [];
+            
+            data.rates.forEach(rate => {
+                if (baseRateCodes.includes(rate.currency_code)) {
+                    baseRates[rate.currency_code] = rate;
+                } else {
+                    otherRates.push(rate);
+                }
+            });
+            
+            let html = `
+                <div class="results-header">
+                    <div class="results-info">
+                        <strong>${data.filtered_count}</strong> rate(s) found for <strong>${data.rate_date}</strong>
+                    </div>
+                    <div class="results-info">
+                        Base Currency: <strong>ALL (Albanian Lek)</strong>
+                    </div>
+                </div>
+                
+                <div class="rates-table-container">
+                    <table class="rates-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>EUR</th>
+                                <th>USD</th>
+                                <th>GBP</th>
+                                <th>CHF</th>
+                                <th>Other Rates</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>${data.rate_date}</strong></td>
+                                <td><span class="rate-value">${baseRates['EUR'] ? baseRates['EUR'].rate.toFixed(2) : 'N/A'}</span></td>
+                                <td><span class="rate-value">${baseRates['USD'] ? baseRates['USD'].rate.toFixed(2) : 'N/A'}</span></td>
+                                <td><span class="rate-value">${baseRates['GBP'] ? baseRates['GBP'].rate.toFixed(2) : 'N/A'}</span></td>
+                                <td><span class="rate-value">${baseRates['CHF'] ? baseRates['CHF'].rate.toFixed(2) : 'N/A'}</span></td>
+                                <td>
+                                    ${otherRates.length > 0 ? `
+                                        <button class="expand-btn" onclick="toggleOtherRates(this)">
+                                            <i class="fas fa-chevron-down"></i> View ${otherRates.length} more
+                                        </button>
+                                        <div class="other-rates">
+                                            <strong>Other Currency Rates:</strong>
+                                            <div class="other-rates-grid">
+                                                ${otherRates.map(rate => {
+                                                    const unitBadge = rate.unit > 1 ? ` (per ${rate.unit})` : '';
+                                                    return `
+                                                        <div class="rate-item">
+                                                            <span class="rate-item-code">${rate.currency_code}</span>
+                                                            <span class="rate-item-value">${rate.rate.toFixed(2)}${unitBadge}</span>
+                                                        </div>
+                                                    `;
+                                                }).join('')}
+                                            </div>
+                                        </div>
+                                    ` : '<span style="color: #999;">—</span>'}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+        }
+
+        // Toggle other rates display
+        function toggleOtherRates(button) {
+            const otherRatesDiv = button.nextElementSibling;
+            const icon = button.querySelector('i');
+            
+            if (otherRatesDiv.classList.contains('show')) {
+                otherRatesDiv.classList.remove('show');
+                button.classList.remove('expanded');
+                icon.className = 'fas fa-chevron-down';
+                button.lastChild.textContent = button.lastChild.textContent.replace('Hide', 'View');
+            } else {
+                otherRatesDiv.classList.add('show');
+                button.classList.add('expanded');
+                icon.className = 'fas fa-chevron-up';
+                button.lastChild.textContent = button.lastChild.textContent.replace('View', 'Hide');
+            }
+        }
+
+        // Show loading state
+        function showLoading() {
+            document.getElementById('resultsContainer').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading exchange rates...</p>
+                </div>
+            `;
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('resultsContainer').innerHTML = `
+                <div class="error">
+                    <strong>⚠️ Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        // Reset search
+        function resetSearch() {
+            document.getElementById('searchForm').reset();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('dateTo').value = today;
+            loadCurrentRates();
+        }
+
+        // Handle Enter key in form
+        document.getElementById('searchForm').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchRates();
+            }
+        });
+
+        // Auto-search on checkbox change
+        document.getElementById('baseRatesOnly').addEventListener('change', function() {
+            if (document.getElementById('dateFrom').value || document.getElementById('currency').value) {
+                searchRates();
+            } else {
+                loadCurrentRates();
+            }
+        });
+
+        // Auto-search on currency change
+        document.getElementById('currency').addEventListener('change', function() {
+            if (this.value) {
+                if (document.getElementById('dateFrom').value) {
+                    searchRates();
+                } else {
+                    loadCurrentRates();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

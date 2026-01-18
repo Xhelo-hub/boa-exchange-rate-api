@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BoA Exchange Rate API - Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🏦 BoA Exchange Rate API</h1>
+                <p>Admin Dashboard</p>
+            </div>
+            <div class="login-credentials-info">
+                <p><strong>Login Credentials:</strong></p>
+                <p>Username: <code>Xhelo</code></p>
+                <p>Password: <code>Yzberish@2030</code></p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autocomplete="username" value="Xhelo">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password" value="Yzberish@2030">
+                </div>
+                <div id="loginError" class="error-message"></div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboardScreen" class="screen">
+        <nav class="navbar">
+            <div class="navbar-brand">
+                <h2>🏦 BoA Exchange Rate API</h2>
+            </div>
+            <div class="navbar-menu">
+                <span id="adminName" class="admin-name"></span>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn" data-tab="pending">
+                    Pending Approvals 
+                    <span id="pendingCount" class="badge" style="display: none;">0</span>
+                </button>
+                <button class="tab-btn active" data-tab="companies">Companies</button>
+                <button class="tab-btn" data-tab="rates">Exchange Rates</button>
+                <button class="tab-btn" data-tab="settings">Global Settings</button>
+                <button class="tab-btn" data-tab="logs">Activity Logs</button>
+            </div>
+
+            <!-- Pending Approvals Tab -->
+            <div id="pendingTab" class="tab-content">
+                <div class="section-header">
+                    <h3>Pending Company Registrations</h3>
+                    <button id="refreshPendingBtn" class="btn btn-secondary">
+                        ↻ Refresh
+                    </button>
+                </div>
+
+                <div id="pendingLoading" class="loading">Loading pending requests...</div>
+                <div id="pendingError" class="error-message"></div>
+                
+                <div class="table-container">
+                    <table id="pendingTable" class="data-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Business Name</th>
+                                <th>Contact</th>
+                                <th>Email</th>
+                                <th>Tax ID</th>
+                                <th>Requested</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="noPending" class="empty-state" style="display: none;">
+                    <p>No pending approvals.</p>
+                </div>
+            </div>
+
+            <!-- Companies Tab -->
+            <div id="companiesTab" class="tab-content active">
+                <div class="section-header">
+                    <h3>QuickBooks Companies</h3>
+                    <button id="addCompanyBtn" class="btn btn-success" style="margin-right: 15px;">
+                        ➕ Connect New Company
+                    </button>
+                    <div class="bulk-actions">
+                        <button id="selectAllBtn" class="btn btn-outline">Select All</button>
+                        <button id="bulkSyncNowBtn" class="btn btn-success" disabled>
+                            ⚡ Sync Now
+                        </button>
+                        <button id="bulkEnableBtn" class="btn btn-primary" disabled>
+                            ✓ Enable Sync
+                        </button>
+                        <button id="bulkDisableBtn" class="btn btn-warning" disabled>
+                            ✗ Disable Sync
+                        </button>
+                        <button id="bulkSettingsBtn" class="btn btn-info" disabled>
+                            ⚙ Apply Settings
+                        </button>
+                    </div>
+                </div>
+
+                <div id="companiesLoading" class="loading">Loading companies...</div>
+                <div id="companiesError" class="error-message"></div>
+                
+                <div class="table-container">
+                    <table id="companiesTable" class="data-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="selectAllCheckbox"></th>
+                                <th>Company Name</th>
+                                <th>Company ID</th>
+                                <th>Status</th>
+                                <th>Sync Enabled</th>
+                                <th>Last Sync</th>
+                                <th>Environment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companiesTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="noCompanies" class="empty-state" style="display: none;">
+                    <p>No companies connected yet.</p>
+                    <p>Connect a QuickBooks company by visiting: <a href="/api/v1/oauth/connect" target="_blank">/api/v1/oauth/connect</a></p>
+                </div>
+            </div>
+
+            <!-- Exchange Rates Tab -->
+            <div id="ratesTab" class="tab-content">
+                <iframe src="/rates" style="width: 100%; height: 800px; border: none; border-radius: 8px;"></iframe>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settingsTab" class="tab-content">
+                <div class="section-header">
+                    <h3>Global Sync Settings</h3>
+                    <button id="saveSettingsBtn" class="btn btn-primary">Save Changes</button>
+                </div>
+
+                <div id="settingsLoading" class="loading">Loading settings...</div>
+                <div id="settingsError" class="error-message"></div>
+                <div id="settingsSuccess" class="success-message"></div>
+
+                <form id="settingsForm" class="settings-form" style="display: none;">
+                    <div class="settings-section">
+                        <h4>Schedule Configuration</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="scheduleEnabled" name="schedule_enabled">
+                                    Enable Scheduled Sync
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="scheduleTime">Sync Time</label>
+                                <input type="time" id="scheduleTime" name="schedule_time">
+                            </div>
+                            <div class="form-group">
+                                <label for="timezone">Timezone</label>
+                                <select id="timezone" name="timezone">
+                                    <option value="Europe/Tirane">Europe/Tirane</option>
+                                    <option value="UTC">UTC</option>
+                                    <option value="America/New_York">America/New_York</option>
+                                    <option value="Europe/London">Europe/London</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="enforceGlobalSchedule" name="enforce_global_schedule">
+                                Enforce Global Schedule (Override company-specific schedules)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h4>Retry Configuration</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="retryOnFailure" name="retry_on_failure">
+                                    Retry on Failure
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="maxRetryAttempts">Max Retry Attempts</label>
+                                <input type="number" id="maxRetryAttempts" name="max_retry_attempts" min="1" max="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="retryDelayMinutes">Retry Delay (minutes)</label>
+                                <input type="number" id="retryDelayMinutes" name="retry_delay_minutes" min="1" max="60">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h4>BoA Scraper Settings</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="boaTimeout">Timeout (seconds)</label>
+                                <input type="number" id="boaTimeout" name="boa_timeout_seconds" min="10" max="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="boaRetryAttempts">Retry Attempts</label>
+                                <input type="number" id="boaRetryAttempts" name="boa_retry_attempts" min="1" max="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h4>Token Management</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="autoRefreshTokens" name="auto_refresh_tokens">
+                                    Auto Refresh Tokens
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="tokenRefreshThreshold">Refresh Threshold (hours)</label>
+                                <input type="number" id="tokenRefreshThreshold" name="token_refresh_threshold_hours" min="1" max="72">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h4>Notifications</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="notifyOnSuccess" name="notify_on_success">
+                                    Notify on Success
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="notifyOnFailure" name="notify_on_failure">
+                                    Notify on Failure
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="notificationEmail">Notification Email</label>
+                                <input type="email" id="notificationEmail" name="notification_email">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="logsTab" class="tab-content">
+                <div class="section-header">
+                    <h3>Activity Logs</h3>
+                    <button id="refreshLogsBtn" class="btn btn-outline">Refresh</button>
+                </div>
+
+                <div id="logsLoading" class="loading">Loading logs...</div>
+                <div id="logsError" class="error-message"></div>
+
+                <div class="table-container">
+                    <table id="logsTable" class="data-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Admin</th>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Details</th>
+                                <th>IP Address</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Settings Modal -->
+    <div id="bulkSettingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Apply Settings to Selected Companies</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="bulkSettingsForm" class="modal-body">
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="bulkAutoSync" name="auto_sync_enabled">
+                        Enable Auto Sync
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="bulkUseCustomSchedule" name="use_custom_schedule">
+                        Use Custom Schedule
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="bulkScheduleTime">Schedule Time</label>
+                    <input type="time" id="bulkScheduleTime" name="schedule_time">
+                </div>
+                <div class="form-group">
+                    <label for="bulkTimezone">Timezone</label>
+                    <select id="bulkTimezone" name="timezone">
+                        <option value="Europe/Tirane">Europe/Tirane</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="Europe/London">Europe/London</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="bulkEnabledCurrencies">Enabled Currencies (comma-separated)</label>
+                    <input type="text" id="bulkEnabledCurrencies" placeholder="USD,EUR,GBP">
+                    <small>Leave empty to sync all currencies</small>
+                </div>
+                <div class="form-group">
+                    <label for="bulkNotificationEmail">Notification Email</label>
+                    <input type="email" id="bulkNotificationEmail" name="notification_email">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="bulkNotifyOnSync" name="notify_on_sync">
+                        Send Notifications
+                    </label>
+                </div>
+            </form>
+            <div class="modal-footer">
+                <button id="cancelBulkSettings" class="btn btn-secondary">Cancel</button>
+                <button id="applyBulkSettings" class="btn btn-primary">Apply to Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Details Modal -->
+    <div id="companyDetailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Company Settings</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="companyDetailsContent">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('Inline script executing...');
+        console.log('Body children:', document.body.children.length);
+    </script>
+    <script src="/static/js/admin.js" onerror="console.error('Failed to load admin.js')" onload="console.log('admin.js loaded successfully')"></script>
+</body>
+</html>

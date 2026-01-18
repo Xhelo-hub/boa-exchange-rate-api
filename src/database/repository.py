@@ -54,7 +54,7 @@ class ExchangeRateRepository:
                 existing = self.session.query(ExchangeRate).filter(
                     and_(
                         ExchangeRate.currency_code == scraped_rate.currency_code,
-                        ExchangeRate.rate_date == scraped_rate.date
+                        ExchangeRate.rate_date == scraped_rate.rate_date
                     )
                 ).first()
                 
@@ -76,7 +76,7 @@ class ExchangeRateRepository:
                         currency_code=scraped_rate.currency_code,
                         currency_name_albanian=scraped_rate.currency_name,
                         currency_name_english=self._get_english_name(scraped_rate.currency_code),
-                        rate_date=scraped_rate.date,
+                        rate_date=scraped_rate.rate_date,
                         rate=scraped_rate.rate,
                         daily_change=Decimal(0),  # First entry has no change
                         unit_multiplier=self._get_unit_multiplier(scraped_rate.currency_code),

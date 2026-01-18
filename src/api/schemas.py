@@ -14,7 +14,7 @@ class ExchangeRateResponse(BaseModel):
     currency_code: str = Field(..., description="Currency code")
     currency_name: str = Field(..., description="Currency name")
     rate: Decimal = Field(..., description="Exchange rate")
-    date: date = Field(..., description="Rate date")
+    rate_date: date = Field(..., description="Rate date")
     
     class Config:
         json_encoders = {
@@ -26,7 +26,7 @@ class ExchangeRateResponse(BaseModel):
 class DailyRatesResponse(BaseModel):
     """Daily exchange rates response schema"""
     
-    date: date = Field(..., description="Rates date")
+    rates_date: date = Field(..., description="Rates date")
     rates: List[ExchangeRateResponse] = Field(..., description="Exchange rates")
     source: str = Field(..., description="Data source")
     total_rates: int = Field(..., description="Total number of rates")

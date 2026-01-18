@@ -63,13 +63,13 @@ async def get_current_rates(priority_only: bool = False):
                 currency_code=rate.currency_code,
                 currency_name=rate.currency_name,
                 rate=rate.rate,
-                date=rate.date
+                rate_date=rate.rate_date
             )
             for rate in daily_rates.rates
         ]
         
         return DailyRatesResponse(
-            date=daily_rates.date,
+            rates_date=daily_rates.rates_date,
             rates=rate_responses,
             source=daily_rates.source,
             total_rates=len(rate_responses)
@@ -102,13 +102,13 @@ async def get_rates_for_date(target_date: date):
                 currency_code=rate.currency_code,
                 currency_name=rate.currency_name,
                 rate=rate.rate,
-                date=rate.date
+                rate_date=rate.rate_date
             )
             for rate in daily_rates.rates
         ]
         
         return DailyRatesResponse(
-            date=daily_rates.date,
+            rates_date=daily_rates.rates_date,
             rates=rate_responses,
             source=daily_rates.source,
             total_rates=len(rate_responses)
@@ -220,73 +220,18 @@ async def get_supported_currencies():
         )
 
 
-# QuickBooks OAuth2 Routes
-@router.get("/auth/quickbooks")
-async def initiate_quickbooks_oauth():
-    """Initiate QuickBooks OAuth2 flow"""
-    try:
-        from ..quickbooks.client import QuickBooksClient
-        
-        qb_client = QuickBooksClient()
-        if not qb_client.initialize_auth_client():
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to initialize QuickBooks auth client"
-            )
-        
-        auth_url = qb_client.get_authorization_url()
-        
-        return {
-            "authorization_url": auth_url,
-            "message": "Redirect user to this URL to authorize QuickBooks access"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error initiating QuickBooks OAuth: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"OAuth initialization failed: {str(e)}"
-        )
+# NOTE: OAuth routes moved to oauth_routes.py for multi-tenant support
+# Use /api/v1/oauth/connect and /api/v1/oauth/callback instead
 
-
+# Temporary redirect for backward compatibility
 @router.get("/callback")
-async def quickbooks_oauth_callback(
-    code: str = Query(..., description="Authorization code from QuickBooks"),
-    realmId: str = Query(..., description="Company ID from QuickBooks"),
-    state: Optional[str] = Query(None, description="State parameter")
-):
-    """Handle QuickBooks OAuth2 callback"""
-    try:
-        from ..quickbooks.client import QuickBooksClient
-        
-        qb_client = QuickBooksClient()
-        if not qb_client.initialize_auth_client():
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to initialize QuickBooks auth client"
-            )
-        
-        # Exchange authorization code for tokens
-        tokens = qb_client.exchange_code_for_tokens(code, realmId)
-        
-        # Test the connection
-        company_info = qb_client.get_company_info()
-        
-        return {
-            "message": "QuickBooks authorization successful",
-            "company_id": realmId,
-            "company_name": company_info.get("Name") if company_info else "Unknown",
-            "tokens_received": True,
-            "access_token": tokens["access_token"][:10] + "..." if tokens.get("access_token") else None,
-            "next_steps": "Tokens are now available for API calls. Update your .env file with these credentials."
-        }
-        
-    except Exception as e:
-        logger.error(f"Error handling QuickBooks callback: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"OAuth callback failed: {str(e)}"
-        )
+async def redirect_old_callback(code: str, realmId: str, state: str = None):
+    """Redirect old callback URL to new OAuth callback"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(
+        url=f"/api/v1/oauth/callback?code={code}&realmId={realmId}" + (f"&state={state}" if state else ""),
+        status_code=307
+    )
 
 
 @router.post("/auth/refresh")

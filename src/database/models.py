@@ -1,9 +1,10 @@
 """
-SQLAlchemy database models for exchange rate storage
+SQLAlchemy database models for multi-tenant exchange rate storage
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, Date, DateTime, Boolean, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Numeric, Date, DateTime, Boolean, Index, UniqueConstraint, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime, date
 from decimal import Decimal
@@ -11,19 +12,84 @@ from decimal import Decimal
 Base = declarative_base()
 
 
+class Company(Base):
+    """
+    Company/Tenant model - stores QuickBooks company credentials
+    Each company that installs the app gets an entry here
+    """
+    __tablename__ = 'companies'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # QuickBooks Company Information
+    company_id = Column(String(50), unique=True, nullable=True, index=True)  # realm_id from QB (nullable until connected)
+    company_name = Column(String(255), nullable=True)  # QB company name
+    
+    # OAuth Credentials (should be encrypted in production)
+    access_token = Column(Text, nullable=True)  # Nullable until connected
+    refresh_token = Column(Text, nullable=True)  # Nullable until connected
+    token_expires_at = Column(DateTime, nullable=True)
+    
+    # Approval Workflow
+    approval_status = Column(String(20), default='pending', nullable=False)  # pending, approved, rejected
+    approved_by = Column(Integer, ForeignKey('admins.id'), nullable=True)  # Admin who approved
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # App Credentials
+    client_id = Column(String(255), nullable=False)
+    client_secret = Column(String(255), nullable=False)
+    
+    # Settings
+    is_sandbox = Column(Boolean, default=False)
+    home_currency = Column(String(3), default='ALL')  # Home currency code
+    is_active = Column(Boolean, default=True)
+    sync_enabled = Column(Boolean, default=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    last_sync_at = Column(DateTime, nullable=True)
+    
+    # Contact Information (optional)
+    contact_email = Column(String(255), nullable=True)
+    contact_name = Column(String(255), nullable=True)
+    
+    # Business Information
+    business_name = Column(String(255), nullable=True)  # Legal business name
+    tax_id = Column(String(50), nullable=True)  # NIPT or tax ID
+    address = Column(Text, nullable=True)
+    phone = Column(String(50), nullable=True)
+    
+    # Relationships
+    sync_settings = relationship("CompanySyncSettings", back_populates="company", uselist=False)
+    approver = relationship("Admin", foreign_keys=[approved_by])
+    
+    # Relationships
+    exchange_rates = relationship("ExchangeRate", back_populates="company", cascade="all, delete-orphan")
+    scraping_logs = relationship("ScrapingLog", back_populates="company", cascade="all, delete-orphan")
+    quickbooks_syncs = relationship("QuickBooksSync", back_populates="company", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<Company(id={self.id}, company_id={self.company_id}, name={self.company_name})>"
+
+
 class ExchangeRate(Base):
     """
-    Exchange rate model - stores daily rates for each currency
+    Exchange rate model - stores daily rates for each currency PER COMPANY
     
-    Design for incremental updates:
-    - Unique constraint on (currency_code, rate_date) prevents duplicates
-    - Only inserts new records when data changes
-    - Tracks when data was scraped vs when rate was effective
+    Multi-tenant design:
+    - Each company has its own set of rates
+    - Unique constraint on (company_id, currency_code, rate_date)
+    - Tracks which rates have been synced to each company's QuickBooks
     """
     __tablename__ = 'exchange_rates'
     
     # Primary key
     id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Company reference (multi-tenant key)
+    company_db_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=False, index=True)
     
     # Currency identification
     currency_code = Column(String(10), nullable=False, index=True)  # USD, EUR, JPY, etc.
@@ -55,31 +121,43 @@ class ExchangeRate(Base):
     source = Column(String(100), default="Bank of Albania")
     source_url = Column(String(500), nullable=True)
     
-    # Indexes for fast queries
+    # Sync tracking (per company)
+    synced_to_quickbooks = Column(Boolean, default=False)
+    synced_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    company = relationship("Company", back_populates="exchange_rates")
+    
+    # Indexes for fast queries (multi-tenant)
     __table_args__ = (
-        # Unique constraint: one rate per currency per date
-        UniqueConstraint('currency_code', 'rate_date', name='uix_currency_date'),
-        # Composite index for common queries
-        Index('idx_currency_date', 'currency_code', 'rate_date'),
-        Index('idx_date_active', 'rate_date', 'is_active'),
+        # Unique constraint: one rate per currency per date PER COMPANY
+        UniqueConstraint('company_db_id', 'currency_code', 'rate_date', name='uix_company_currency_date'),
+        # Composite indexes for common queries
+        Index('idx_company_date', 'company_db_id', 'rate_date'),
+        Index('idx_company_currency_date', 'company_db_id', 'currency_code', 'rate_date'),
+        Index('idx_company_sync_status', 'company_db_id', 'synced_to_quickbooks'),
     )
     
     def __repr__(self):
-        return f"<ExchangeRate({self.currency_code} = {self.rate} ALL on {self.rate_date})>"
+        return f"<ExchangeRate(company_id={self.company_db_id}, {self.currency_code} = {self.rate} ALL on {self.rate_date})>"
 
 
 class ScrapingLog(Base):
     """
-    Log of scraping attempts - tracks when we checked for updates
+    Log of scraping attempts - tracks when we checked for updates PER COMPANY
     
     Purpose:
-    - Track scraping frequency
+    - Track scraping frequency per company
     - Identify when rates weren't updated (weekends, holidays)
     - Debug scraping issues
     """
     __tablename__ = 'scraping_logs'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Company reference (nullable for global scrapes)
+    company_db_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=True, index=True)
+    
     scraped_at = Column(DateTime, default=func.now(), nullable=False, index=True)
     
     # Results
@@ -93,8 +171,11 @@ class ScrapingLog(Base):
     # Error tracking
     error_message = Column(String(1000), nullable=True)
     
+    # Relationships
+    company = relationship("Company", back_populates="scraping_logs")
+    
     def __repr__(self):
-        return f"<ScrapingLog({self.scraped_at}, found={self.rates_found}, new={self.new_rates_added})>"
+        return f"<ScrapingLog(company_id={self.company_db_id}, {self.scraped_at}, found={self.rates_found}, new={self.new_rates_added})>"
 
 
 class CurrencyMetadata(Base):
@@ -135,16 +216,19 @@ class CurrencyMetadata(Base):
 
 class QuickBooksSync(Base):
     """
-    Track QuickBooks synchronization history
+    Track QuickBooks synchronization history PER COMPANY
     
     Purpose:
-    - Know which rates have been sent to QB
-    - Prevent duplicate syncs
+    - Know which rates have been sent to each company's QB
+    - Prevent duplicate syncs per company
     - Audit trail for compliance
     """
     __tablename__ = 'quickbooks_syncs'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Company reference
+    company_db_id = Column(Integer, ForeignKey('companies.id', ondelete='CASCADE'), nullable=False, index=True)
     
     # What was synced
     currency_code = Column(String(10), nullable=False, index=True)
@@ -156,16 +240,19 @@ class QuickBooksSync(Base):
     sync_status = Column(String(50), nullable=False)  # success, failed, pending
     
     # QB details
-    qb_company_id = Column(String(100), nullable=True)
     qb_response = Column(String(2000), nullable=True)
     error_message = Column(String(1000), nullable=True)
     
     # Reference to source
-    exchange_rate_id = Column(Integer, nullable=True)  # FK to exchange_rates.id
+    exchange_rate_id = Column(Integer, ForeignKey('exchange_rates.id'), nullable=True)
+    
+    # Relationships
+    company = relationship("Company", back_populates="quickbooks_syncs")
     
     __table_args__ = (
-        Index('idx_sync_currency_date', 'currency_code', 'rate_date'),
+        Index('idx_company_sync_date', 'company_db_id', 'rate_date'),
+        Index('idx_company_currency_date', 'company_db_id', 'currency_code', 'rate_date'),
     )
     
     def __repr__(self):
-        return f"<QuickBooksSync({self.currency_code} on {self.rate_date}, status={self.sync_status})>"
+        return f"<QuickBooksSync(company_id={self.company_db_id}, {self.currency_code} on {self.rate_date}, status={self.sync_status})>"

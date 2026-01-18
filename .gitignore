@@ -154,4 +154,5 @@ Thumbs.db
 # Project specific
 logs/
 *.log
-config/secrets.env
+config/secrets.envvenv312/
+data/

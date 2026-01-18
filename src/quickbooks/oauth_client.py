@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 import requests
 
 from ..utils.logger import get_logger
-from ..config.settings import settings
+from config.settings import settings
 
 logger = get_logger(__name__)
 
